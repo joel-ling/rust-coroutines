@@ -8,48 +8,41 @@ use std::pin::Pin;
 
 trait VanillaCoroutine = Coroutine<Yield = (), Return = ()>;
 
-struct CoroutineRuntime {
-    queue: Vec<fn() -> Pin<Box<dyn VanillaCoroutine>>>,
+fn make_hello() -> impl VanillaCoroutine {
+    || loop {
+        println!("Hello, world!");
+
+        yield;
+    }
 }
 
-impl CoroutineRuntime {
-    fn new() -> Self {
-        CoroutineRuntime { queue: Vec::new() }
-    }
+fn make_increment() -> impl VanillaCoroutine {
+    || {
+        let mut x: u8 = 0;
 
-    fn add(&mut self, coroutine_maker: fn() -> Pin<Box<dyn VanillaCoroutine>>) {
-        self.queue.push(coroutine_maker);
-    }
-
-    fn execute(&mut self) {
         loop {
-            for make_coroutine in self.queue.iter() {
-                let coroutine: Pin<Box<dyn VanillaCoroutine>> =
-                    make_coroutine();
+            println!("{x}");
 
-                let mut pinned: Pin<&mut Pin<Box<dyn VanillaCoroutine>>> =
-                    pin!(coroutine);
-
-                pinned.as_mut().resume(());
+            match x {
+                255 => x = 0,
+                _ => x = x + 1,
             }
+
+            yield;
         }
     }
 }
 
-fn hello() -> Pin<Box<dyn VanillaCoroutine>> {
-    let coroutine = || {
-        println!("Hello, world!");
-
-        yield;
-    };
-
-    Box::pin(coroutine)
-}
-
 fn main() {
-    let mut runtime = CoroutineRuntime::new();
+    let mut hello: Pin<&mut dyn VanillaCoroutine> = pin!(make_hello());
 
-    runtime.add(hello);
+    let mut increment: Pin<&mut dyn VanillaCoroutine> = pin!(make_increment());
 
-    runtime.execute();
+    // XXX: `hello`, `increment` are local due to a limitation in `pin!`
+    // XXX: see https://doc.rust-lang.org/std/pin/macro.pin.html#remarks
+
+    loop {
+        hello.as_mut().resume(());
+        increment.as_mut().resume(());
+    }
 }
